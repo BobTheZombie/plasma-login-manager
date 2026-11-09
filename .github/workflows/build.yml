@@ -15,7 +15,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y meson ninja-build pkg-config             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools             libpam0g-dev libsystemd-dev \
-            weston qt6-wayland qml6-module-qtqml qml6-module-qtquick \
+            weston qt6-wayland qml6-module-qtqml \
+            qml6-module-qtqml-workerscript qml6-module-qtqml-models \
+            qml6-module-qtquick \
             qml6-module-qtquick-controls qml6-module-qtquick-layouts \
             qml6-module-qtquick-window
       - name: Source invariants
