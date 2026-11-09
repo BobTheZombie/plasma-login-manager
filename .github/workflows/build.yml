@@ -65,11 +65,21 @@ jobs:
             sleep 0.1
           done
           [ -S "$XDG_RUNTIME_DIR/plm-ci" ] || { cat /tmp/plm-weston.log; exit 1; }
+          # A mock socket provides display-only sample accounts. This
+          # process cannot authenticate anyone and is CI-only.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 /run/plm
+          python3 tests/preview-backend.py >/tmp/plm-preview-backend.log 2>&1 &
+          backend_pid=$!
+          for i in $(seq 1 30); do
+            [ -S /run/plm/control.sock ] && break
+            sleep 0.1
+          done
+          [ -S /run/plm/control.sock ] || { cat /tmp/plm-preview-backend.log; exit 1; }
           rc=0
           # Exercise the production embedded qrc:/plm/Main.qml path,
           # not the PLM_QML_PATH development override.
           QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software \
-          WAYLAND_DISPLAY=plm-ci \
+          WAYLAND_DISPLAY=plm-ci PLM_PREVIEW_SCREENSHOT="$PWD/greeter-preview.png" \
           timeout --signal=TERM 6s ./build/plm-greeter >/tmp/plm-greeter.log 2>&1 || rc=$?
           cat /tmp/plm-greeter.log
           # Require a composited frame rather than just a living event loop.
@@ -86,3 +96,12 @@ jobs:
           # timeout=124 means the greeter stayed alive under a real
           # Wayland compositor without a PAM backend. Early exit is failure.
           [ "$rc" -eq 124 ]
+          test -s greeter-preview.png
+          file greeter-preview.png
+      - name: Upload real rendered greeter screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-plasma-greeter
+          path: greeter-preview.png
+          if-no-files-found: error
+          retention-days: 14

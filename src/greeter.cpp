@@ -249,6 +249,18 @@ int main(int argc, char **argv)
             if (screen == app.primaryScreen()) backend.ready(startup.elapsed());
         }, Qt::QueuedConnection);
         window->showFullScreen();
+        // Developer-only screenshot capture of the *real* QML window. The
+        // production PAM worker clears the environment before exec.
+        const QByteArray screenshotPath = qgetenv("PLM_PREVIEW_SCREENSHOT");
+        if (screen == app.primaryScreen() && !screenshotPath.isEmpty()) {
+            QTimer::singleShot(1700, window, [window, screenshotPath] {
+                const QImage capture = window->grabWindow();
+                if (capture.isNull() || !capture.save(QString::fromUtf8(screenshotPath), "PNG"))
+                    qWarning() << "PLM_PREVIEW_SCREENSHOT_FAILED";
+                else
+                    qInfo() << "PLM_PREVIEW_SCREENSHOT_SAVED" << screenshotPath;
+            });
+        }
         windows.insert(screen, window);
     };
     for (QScreen *screen : app.screens()) showScreen(screen);
