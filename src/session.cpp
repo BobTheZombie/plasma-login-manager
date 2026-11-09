@@ -8,6 +8,8 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <signal.h>
+#include <algorithm>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <termios.h>
@@ -29,6 +31,37 @@ static void clean(Credentials &c)
         explicit_bzero(c.password.data(), c.password.size());
         c.password.clear();
     }
+}
+
+static volatile sig_atomic_t interrupted = 0;
+
+static void terminate(int) { interrupted = 1; }
+
+static bool allowedPamEnvironment(const std::string &key)
+{
+    if (key == "LANG" || key == "LANGUAGE" || key == "TZ" ||
+        key == "KRB5CCNAME" || key == "XAUTHORITY" ||
+        key == "XDG_CONFIG_HOME" || key == "XDG_DATA_HOME" ||
+        key == "XDG_CACHE_HOME" || key == "XDG_STATE_HOME") return true;
+    return key.rfind("LC_", 0) == 0;
+}
+
+static std::vector<std::string> sessionEnvironment(pam_handle_t *pam)
+{
+    std::vector<std::string> result;
+    char **entries = pam_getenvlist(pam);
+    if (!entries) return result;
+    for (size_t i = 0; entries[i]; ++i) {
+        const std::string env = entries[i];
+        const size_t equals = env.find('=');
+        if (equals != std::string::npos &&
+            allowedPamEnvironment(env.substr(0, equals)) &&
+            env.size() <= 4096 && result.size() < 64)
+            result.push_back(env);
+        free(entries[i]);
+    }
+    free(entries);
+    return result;
 }
 
 static bool readExact(int fd, void *where, size_t length)
@@ -123,6 +156,12 @@ int main(int argc, char **argv)
     const std::string shell = found->pw_shell ? found->pw_shell : "/bin/sh";
     const std::string tty = "/dev/tty" + vtnr;
 
+    struct sigaction action{};
+    action.sa_handler = terminate;
+    sigemptyset(&action.sa_mask);
+    sigaction(SIGTERM, &action, nullptr);
+    sigaction(SIGINT, &action, nullptr);
+
     Credentials credentials;
     if (mode == "user") {
         uint32_t wireSize = 0;
@@ -201,6 +240,15 @@ int main(int argc, char **argv)
     }
     const std::string session = sid;
     const std::string runtimeDir = runtime;
+    const std::string expectedRuntime = "/run/user/" + std::to_string(uid);
+    struct stat runtimeStat{};
+    if (runtimeDir != expectedRuntime ||
+        stat(runtimeDir.c_str(), &runtimeStat) != 0 ||
+        !S_ISDIR(runtimeStat.st_mode) || runtimeStat.st_uid != uid) {
+        fprintf(stderr, "pam_systemd returned an invalid runtime directory\n");
+        return finish(PAM_SESSION_ERR, true, true);
+    }
+    const auto pamEnvironment = sessionEnvironment(pam);
 
     const pid_t child = fork();
     if (child < 0) return finish(PAM_SYSTEM_ERR, true, true);
@@ -213,6 +261,12 @@ int main(int argc, char **argv)
             || setgid(gid) != 0 || setuid(uid) != 0) _exit(125);
         umask(022);
         clearenv();
+        for (const auto &entry : pamEnvironment) {
+            const auto equal = entry.find('=');
+            const std::string key = entry.substr(0, equal);
+            const std::string val = entry.substr(equal + 1);
+            setenv(key.c_str(), val.c_str(), 1);
+        }
         setenv("HOME", home.c_str(), 1);
         setenv("USER", name.c_str(), 1);
         setenv("LOGNAME", name.c_str(), 1);
@@ -228,7 +282,7 @@ int main(int argc, char **argv)
         setenv("XDG_VTNR", vtnr.c_str(), 1);
         setenv("DBUS_SESSION_BUS_ADDRESS",
                ("unix:path=" + runtimeDir + "/bus").c_str(), 1);
-        setenv("LANG", "C.UTF-8", 1);
+        if (!getenv("LANG")) setenv("LANG", "C.UTF-8", 1);
         unsetenv("DISPLAY");
         unsetenv("WAYLAND_DISPLAY");
         if (chdir(home.c_str()) != 0 && chdir("/") != 0) _exit(125);
@@ -247,8 +301,26 @@ int main(int argc, char **argv)
     // KWin/Plasma starts as the unprivileged child; PAM lives only in worker.
     writeSession(session);
     int childStatus = 0;
-    while (waitpid(child, &childStatus, 0) < 0) {
-        if (errno != EINTR) break;
+    bool signaled = false;
+    while (true) {
+        const pid_t waited = waitpid(child, &childStatus, 0);
+        if (waited == child) break;
+        if (waited < 0 && errno == EINTR) {
+            if (interrupted && !signaled) {
+                kill(child, SIGTERM);
+                signaled = true;
+            }
+            continue;
+        }
+        if (waited < 0 && errno == ECHILD) break;
+        if (waited < 0) {
+            kill(child, SIGKILL);
+            while (waitpid(child, &childStatus, 0) < 0 && errno == EINTR) {}
+            break;
+        }
     }
+    if (WIFSIGNALED(childStatus) ||
+        (WIFEXITED(childStatus) && WEXITSTATUS(childStatus) != 0))
+        return finish(PAM_SESSION_ERR, true, true);
     return finish(PAM_SUCCESS, true, true);
 }
