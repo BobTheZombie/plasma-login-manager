@@ -55,10 +55,12 @@ jobs:
             sleep 0.1
           done
           [ -S /tmp/.X11-unix/X99 ] || { cat /tmp/plm-xvfb.log; exit 1; }
-          weston --backend=x11-backend.so --socket=plm-ci \
+          # Pixman avoids slow/unsupported CI virtual-GL initialization.
+          # The greeter itself still uses the Wayland Qt platform plugin.
+          weston --backend=x11-backend.so --renderer=pixman --socket=plm-ci \
             --idle-time=0 --log=/tmp/plm-weston.log &
           weston_pid=$!
-          for i in $(seq 1 50); do
+          for i in $(seq 1 200); do
             [ -S "$XDG_RUNTIME_DIR/plm-ci" ] && break
             sleep 0.1
           done
