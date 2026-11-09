@@ -250,6 +250,22 @@ int main(int argc, char **argv)
     }
     const auto pamEnvironment = sessionEnvironment(pam);
 
+    // The supervisor must activate this logind session *before* KWin
+    // acquires DRM master and input devices. This avoids a VT handoff race.
+    writeSession(session);
+    bool foreground = false;
+    for (int i = 0; i < 250 && !interrupted; ++i) {
+        if (sd_session_is_active(session.c_str()) > 0) {
+            foreground = true;
+            break;
+        }
+        usleep(20000);
+    }
+    if (!foreground) {
+        fprintf(stderr, "logind did not activate the session's VT\n");
+        return finish(PAM_SESSION_ERR, true, true);
+    }
+
     const pid_t child = fork();
     if (child < 0) return finish(PAM_SYSTEM_ERR, true, true);
     if (child == 0) {
@@ -299,7 +315,6 @@ int main(int argc, char **argv)
         _exit(127);
     }
     // KWin/Plasma starts as the unprivileged child; PAM lives only in worker.
-    writeSession(session);
     int childStatus = 0;
     bool signaled = false;
     while (true) {
