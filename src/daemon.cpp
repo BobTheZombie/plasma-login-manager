@@ -162,7 +162,22 @@ public:
             }
         });
 
+        recoverExistingSession();
         startGreeter();
+        m_recoveryMonitor.setInterval(2000);
+        connect(&m_recoveryMonitor, &QTimer::timeout, this, [this] {
+            if (m_recoveredSession.isEmpty() || m_userProcess) return;
+            const QByteArray id = m_recoveredSession.toUtf8();
+            uid_t uid = 0;
+            if (sd_session_get_uid(id.constData(), &uid) < 0) {
+                qInfo() << "Recovered user session ended; restoring greeter";
+                m_recoveredSession.clear();
+                m_userActive = false;
+                if (!m_greeterProcess) startGreeter();
+                else activateSession(m_greeterSession);
+            }
+        });
+        m_recoveryMonitor.start();
         uint64_t watchdog = 0;
         if (sd_watchdog_enabled(0, &watchdog) > 0 && watchdog > 0) {
             // Watchdog heartbeats are tied to the daemon's event loop.
@@ -185,6 +200,33 @@ public:
     }
 
 private:
+    void recoverExistingSession()
+    {
+        char **ids = nullptr;
+        const int count = sd_get_sessions(&ids);
+        if (count < 0) return;
+        for (int i = 0; i < count; ++i) {
+            char *seat = nullptr, *type = nullptr, *desktop = nullptr;
+            unsigned int vt = 0;
+            const int seatOk = sd_session_get_seat(ids[i], &seat);
+            const int typeOk = sd_session_get_type(ids[i], &type);
+            const int desktopOk = sd_session_get_desktop(ids[i], &desktop);
+            const int vtOk = sd_session_get_vt(ids[i], &vt);
+            const bool match = seatOk >= 0 && seat && QByteArray(seat) == "seat0"
+                && typeOk >= 0 && type && QByteArray(type) == "wayland"
+                && desktopOk >= 0 && desktop && QByteArray(desktop) == "KDE"
+                && vtOk >= 0 && vt == 2;
+            if (match) {
+                m_recoveredSession = QString::fromUtf8(ids[i]);
+                m_userActive = true;
+                qWarning() << "Found existing Plasma logind session:"
+                           << m_recoveredSession;
+            }
+            free(seat); free(type); free(desktop); free(ids[i]);
+        }
+        free(ids);
+    }
+
     void emitAll(const QJsonObject &message)
     {
         for (QLocalSocket *s : m_clients) sendMessage(s, message);
@@ -240,7 +282,7 @@ private:
             password.fill(QChar(0));
             return;
         }
-        if (!m_greeterReady || m_userProcess ||
+        if (!m_greeterReady || m_userActive || m_userProcess ||
             now < m_backoffUntil || now - m_lastAttempt < 1750) {
             sendMessage(socket, {{"type","busy"},{"message","Please try again shortly"}});
             password.fill(QChar(0));
@@ -281,8 +323,11 @@ private:
                 emitAll({{"type","error"},{"message","Authentication failed"}});
             } else {
                 emitAll({{"type","session-ended"},{"message","Session ended"}});
-                if (!activateSession(m_greeterSession))
+                if (!m_greeterProcess) {
+                    startGreeter();
+                } else if (!activateSession(m_greeterSession)) {
                     qWarning() << "Could not reactivate greeter session";
+                }
             }
             qInfo() << "User session worker exited" << code << state;
             worker->deleteLater();
@@ -403,6 +448,7 @@ private:
                     qWarning() << "Could not activate greeter VT";
             } else {
                 m_userActive = true;
+                m_recoveredSession.clear();
                 m_waitingForAnswer = false;
                 if (m_userProcess) m_userProcess->closeWriteChannel();
                 m_authClient.clear();
@@ -483,6 +529,8 @@ private:
     QPointer<QLocalSocket> m_authClient;
     bool m_waitingForAnswer = false;
     bool m_greeterReady = false;
+    QString m_recoveredSession;
+    QTimer m_recoveryMonitor;
     QTimer m_watchdog;
 };
 
