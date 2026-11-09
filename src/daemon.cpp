@@ -3,6 +3,11 @@
 #include <QCoreApplication>
 #include <QByteArray>
 #include <QDateTime>
+#include <QElapsedTimer>
+#include <QPointer>
+#include <QJsonArray>
+#include <QCoreApplication>
+#include <algorithm>
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDir>
@@ -127,6 +132,22 @@ public:
         });
 
         startGreeter();
+        uint64_t watchdog = 0;
+        if (sd_watchdog_enabled(0, &watchdog) > 0 && watchdog > 0) {
+            // Watchdog heartbeats are tied to the daemon's event loop.
+            const auto millis = static_cast<int>(
+                std::max<uint64_t>(1000, std::min<uint64_t>(10000, watchdog / 3000)));
+            m_watchdog.setInterval(millis);
+            connect(&m_watchdog, &QTimer::timeout, this,
+                    [] { sd_notify(0, "WATCHDOG=1"); });
+            m_watchdog.start();
+        }
+        connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
+                this, [this] {
+            sd_notify(0, "STOPPING=1");
+            if (m_userProcess) m_userProcess->terminate();
+            if (m_greeterProcess) m_greeterProcess->terminate();
+        });
         sd_notify(0, "READY=1\nSTATUS=plmd listening; greeter launching");
         qInfo() << "plmd ready; Wayland greeter on seat0 VT1";
         return true;
@@ -162,6 +183,9 @@ private:
             const QString kind = obj.value("type").toString();
             if (kind == "auth") {
                 authenticate(s, obj);
+            } else if (kind == "ready") {
+                m_greeterReady = true;
+                sendMessage(s, {{"type","ready"},{"seat","seat0"}});
             } else if (kind == "power") {
                 power(s, obj.value("action").toString());
             } else {
@@ -183,7 +207,8 @@ private:
             password.fill(QChar(0));
             return;
         }
-        if (m_userProcess || now - m_lastAttempt < 1750) {
+        if (!m_greeterReady || m_userProcess ||
+            now < m_backoffUntil || now - m_lastAttempt < 1750) {
             sendMessage(socket, {{"type","busy"},{"message","Please try again shortly"}});
             password.fill(QChar(0));
             return;
@@ -208,6 +233,11 @@ private:
                 [this, worker](int code, QProcess::ExitStatus state) {
             if (m_userProcess != worker) return;
             const bool wasActive = m_userActive;
+            if (!wasActive) {
+                m_failedAttempts = std::min(m_failedAttempts + 1, 5);
+                m_backoffUntil = QDateTime::currentMSecsSinceEpoch()
+                                 + (1000LL << m_failedAttempts);
+            }
             m_userProcess = nullptr;
             m_userActive = false;
             if (!wasActive) {
@@ -279,6 +309,8 @@ private:
                     qWarning() << "Could not activate greeter VT";
             } else {
                 m_userActive = true;
+                m_failedAttempts = 0;
+                m_backoffUntil = 0;
                 emitAll({{"type","starting"},{"message","Starting Plasma…"}});
                 if (!activateSession(id)) {
                     qWarning() << "Failed to activate user logind session" << id;
@@ -290,6 +322,18 @@ private:
     void startGreeter()
     {
         if (m_greeterProcess) return;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - m_greeterCrashWindow > 60000) {
+            m_greeterCrashWindow = now;
+            m_greeterCrashCount = 0;
+        }
+        if (++m_greeterCrashCount > 5) {
+            qCritical() << "Greeter restarted too often; exiting for systemd recovery";
+            QCoreApplication::exit(1);
+            return;
+        }
+        m_greeterReady = false;
+        m_greeterData.clear();
         auto *worker = new QProcess(this);
         m_greeterProcess = worker;
         worker->setProgram(SessionWorker);
@@ -301,14 +345,23 @@ private:
                     qWarning().noquote() << "greeter-helper:" <<
                         QString::fromUtf8(worker->readAllStandardError()).trimmed();
                 });
-        connect(worker, &QProcess::finished, this, [this, worker] {
-            if (m_greeterProcess == worker) m_greeterProcess = nullptr;
+        const auto onGreeterExit = [this, worker] {
+            if (m_greeterProcess != worker) return;
+            m_greeterProcess = nullptr;
             m_greeterSession.clear();
             worker->deleteLater();
             qWarning() << "Greeter process stopped";
-            QTimer::singleShot(2000, this, [this] {
-                if (!m_greeterProcess) startGreeter();
-            });
+            if (!m_userActive) {
+                QTimer::singleShot(2000, this, [this] {
+                    if (!m_greeterProcess) startGreeter();
+                });
+            }
+        };
+        connect(worker, &QProcess::finished, this, [onGreeterExit](int, QProcess::ExitStatus) {
+            onGreeterExit();
+        });
+        connect(worker, &QProcess::errorOccurred, this, [onGreeterExit](QProcess::ProcessError error) {
+            if (error == QProcess::FailedToStart) onGreeterExit();
         });
         worker->start();
     }
@@ -325,6 +378,12 @@ private:
     QString m_greeterSession;
     bool m_userActive = false;
     qint64 m_lastAttempt = 0;
+    qint64 m_backoffUntil = 0;
+    qint64 m_greeterCrashWindow = 0;
+    int m_greeterCrashCount = 0;
+    int m_failedAttempts = 0;
+    bool m_greeterReady = false;
+    QTimer m_watchdog;
 };
 
 int main(int argc, char **argv)
