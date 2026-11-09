@@ -21,6 +21,9 @@ executable('plm-session', 'src/session.cpp',
   dependencies: [pam, systemd],
   install: true, install_dir: get_option('libexecdir'))
 greeter_moc = qt6.preprocess(moc_headers: ['src/backend.h'])
+# Embed the QML shell in the greeter binary: eliminate startup filesystem
+# probing and allow a safe explicit PLM_QML_PATH development override.
+greeter_qrc = qt6.compile_resources(sources: ['qml/greeter.qrc'])
 # Tune only UI/wallpaper rendering. PAM/session binaries remain portable.
 visual_cpp_args = []
 if get_option('simd')
@@ -36,7 +39,7 @@ if get_option('cpu_tune') != 'generic'
   visual_cpp_args += [cpu_flag]
 endif
 
-executable('plm-greeter', ['src/greeter.cpp', 'src/wallpaper.cpp', greeter_moc],
+executable('plm-greeter', ['src/greeter.cpp', 'src/wallpaper.cpp', greeter_moc, greeter_qrc],
   cpp_args: visual_cpp_args,
   dependencies: [qtquick],
   install: true, install_dir: get_option('libexecdir'))

@@ -91,7 +91,9 @@ Window {
                 Math.min(1440, Math.max(240, Math.round(root.height)))
         fillMode: Image.PreserveAspectCrop
         smooth: true
-        mipmap: true
+        // Full-screen native-size texture: mipmaps add GPU startup work
+        // without improving quality at 1:1 scaling.
+        mipmap: false
         cache: true
         asynchronous: true
     }

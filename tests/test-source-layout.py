@@ -46,6 +46,10 @@ class SourceChecks(unittest.TestCase):
 
     def test_qt_moc_and_multiscreen(self):
         self.assertIn('addImageProvider("plmwallpaper"', self.file("src/greeter.cpp"))
+        self.assertIn("qrc:/plm/Main.qml", self.file("src/greeter.cpp"))
+        self.assertIn("PLM_FIRST_FRAME_MS=", self.file("src/greeter.cpp"))
+        self.assertIn("qt6.compile_resources", self.file("meson.build"))
+        self.assertIn("QQuickStyle::setStyle", self.file("src/greeter.cpp"))
         self.assertIn("test('wallpaper-scalar-simd-parity'", self.file("meson.build"))
         self.assertIn("AVX2", self.file("src/wallpaper.cpp"))
         self.assertIn('text: "Plasma (Wayland)"', self.file("qml/Main.qml"))

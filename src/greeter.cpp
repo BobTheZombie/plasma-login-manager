@@ -2,6 +2,10 @@
 #include "backend.h"
 #include "wallpaper.h"
 #include <QGuiApplication>
+#include <QQuickStyle>
+#include <QElapsedTimer>
+#include <QLoggingCategory>
+#include <memory>
 #include <QScreen>
 #include <QQuickWindow>
 #include <QQmlApplicationEngine>
@@ -183,21 +187,29 @@ void Backend::onData()
 
 int main(int argc, char **argv)
 {
+    QElapsedTimer startup;
+    startup.start();
     qputenv("QT_QPA_PLATFORM", "wayland");
     QGuiApplication app(argc, argv);
     app.setApplicationName("Plasma-login-manager");
     app.setOrganizationName("LPM Linux");
 
+    // Every visible control has its own QML background. The lightweight
+    // Basic style avoids KDE/Fusion style plugin probing on a cold login.
+    QQuickStyle::setStyle("Basic");
+    qInfo().noquote() << "PLM_APP_READY_MS=" << startup.elapsed();
+
     Backend backend;
     QQmlApplicationEngine engine;
     engine.addImageProvider("plmwallpaper", new WallpaperProvider());
     engine.rootContext()->setContextProperty("backend", &backend);
-    // Override only for unprivileged nested-compositor smoke tests.
-    // The privileged PAM worker constructs a clean environment, so normal
-    // system startup always loads the installed /usr/share/plm/Main.qml.
-    const QString qmlPath = qEnvironmentVariable(
-        "PLM_QML_PATH", "/usr/share/plm/Main.qml");
-    QQmlComponent component(&engine, QUrl::fromLocalFile(qmlPath));
+    // The normal login path reads QML from the compiled Qt resource.
+    // Only unprivileged nested-Wayland tests use the development override.
+    const QUrl qmlUrl = qEnvironmentVariableIsSet("PLM_QML_PATH")
+        ? QUrl::fromLocalFile(qEnvironmentVariable("PLM_QML_PATH"))
+        : QUrl(QStringLiteral("qrc:/plm/Main.qml"));
+    QQmlComponent component(&engine, qmlUrl);
+    qInfo().noquote() << "PLM_QML_READY_MS=" << startup.elapsed();
     if (component.isError()) {
         qCritical() << component.errors();
         return 2;
@@ -218,8 +230,18 @@ int main(int argc, char **argv)
         QQmlEngine::setObjectOwnership(window, QQmlEngine::CppOwnership);
         window->setScreen(screen);
         window->setFlags(Qt::FramelessWindowHint);
-        window->setVisibility(QWindow::FullScreen);
-        window->show();
+        // The first frame includes GL/Qt RHI initialization and compositor
+        // presentation. Log this exact boundary so we can distinguish
+        // renderer stalls from QML parsing and CPU wallpaper generation.
+        auto frameSeen = std::make_shared<bool>(false);
+        QObject::connect(window, &QQuickWindow::frameSwapped, window,
+                         [frameSeen, &startup, screen] {
+            if (*frameSeen) return;
+            *frameSeen = true;
+            qInfo().noquote() << "PLM_FIRST_FRAME_MS=" << startup.elapsed()
+                              << "SCREEN=" << screen->name();
+        }, Qt::QueuedConnection);
+        window->showFullScreen();
         windows.insert(screen, window);
     };
     for (QScreen *screen : app.screens()) showScreen(screen);
