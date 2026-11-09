@@ -118,6 +118,11 @@ void Backend::onData()
         const auto object = parsed.object();
         const QString type = object.value("type").toString();
         if (type == "hello") {
+            const QVariantList candidates = object.value("users").toArray().toVariantList();
+            if (m_users != candidates) {
+                m_users = candidates;
+                emit usersChanged();
+            }
             setMessage(QString());
         } else if (type == "busy") {
             setBusy(true);

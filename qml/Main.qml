@@ -78,7 +78,7 @@ Window {
         anchors.centerIn: parent
         anchors.verticalCenterOffset: Math.max(24, root.height * 0.07)
         width: Math.min(root.width - 32, 414)
-        height: 330
+        height: 382
         radius: 22
         color: "#d9192940"
         border.color: "#436187"
@@ -102,6 +102,26 @@ Window {
                 text: "LPM Linux · Wayland"
                 font.pixelSize: 12
                 color: "#a8c1e6"
+            }
+
+            ComboBox {
+                id: userPicker
+                Layout.fillWidth: true
+                visible: backend.users.length > 0
+                model: backend.users
+                textRole: "displayName"
+                font.pixelSize: 14
+                onActivated: function(index) {
+                    var item = backend.users[index]
+                    if (item && item.name) username.text = item.name
+                    password.forceActiveFocus()
+                }
+                Component.onCompleted: {
+                    if (backend.users.length > 0) {
+                        var first = backend.users[0]
+                        if (first && first.name) username.text = first.name
+                    }
+                }
             }
 
             TextField {
