@@ -1,0 +1,61 @@
+#!/bin/bash
+# Developer preview LPM build recipe. Kept WITH the standalone project,
+# never pushed to LPMBUILDS until real login/session tests pass.
+NAME="plasma-login-manager"
+VERSION="0.1.0"
+RELEASE="2"
+ARCH="${ARCH:-x86_64}"
+SUMMARY="Experimental Wayland-only Plasma 6 login manager with PAM and logind"
+URL="https://github.com/BobTheZombie/plasma-login-manager"
+LICENSE=("GPL-2.0-or-later")
+SOURCE=("https://github.com/BobTheZombie/plasma-login-manager/archive/1888c980ad2fb6e3df249718af8dca5e941f289e.tar.gz")
+# Commit pinned, but archive checksum must be verified before stable publishing.
+SHA256SUMS=("SKIP")
+PATCHES=()
+REQUIRES=(
+    "glibc" "gcc-libs" "pam" "systemd"
+    "qt6-base" "qt6-declarative" "qt6-wayland"
+    "kwin" "plasma-workspace"
+)
+BUILD_REQUIRES=(
+    "meson" "ninja" "pkgconf" "python"
+    "qt6-base" "qt6-declarative" "pam" "systemd"
+)
+PROVIDES=("plasma-login-manager")
+CONFLICTS=()
+OBSOLETES=()
+RECOMMENDS=("kscreen" "breeze" "qt6-svg")
+SUGGESTS=()
+prepare() {
+    set -euxo pipefail
+    local src="$SRCROOT/$NAME-$VERSION"
+    test -f "$src/meson.build"
+    test -f "$src/src/daemon.cpp"
+    test -f "$src/src/session.cpp"
+    rm -rf "$src/build"
+}
+build() {
+    set -euxo pipefail
+    local src="$SRCROOT/$NAME-$VERSION"
+    meson setup "$src/build" "$src" --prefix=/usr --libdir=lib \
+        --libexecdir=libexec --buildtype=release
+    meson compile -C "$src/build" --jobs "${LPM_BUILD_JOBS:-$(nproc)}"
+}
+check() {
+    set -euxo pipefail
+    python3 "$SRCROOT/$NAME-$VERSION/tests/test-source-layout.py"
+}
+staging() {
+    set -euxo pipefail
+    local src="$SRCROOT/$NAME-$VERSION"
+    test -n "${pkgdir:-}" && test "$pkgdir" != /
+    DESTDIR="$pkgdir" meson install -C "$src/build"
+    test -x "$pkgdir/usr/libexec/plmd"
+    test -x "$pkgdir/usr/libexec/plm-session"
+    test -x "$pkgdir/usr/libexec/plm-greeter"
+    test -f "$pkgdir/usr/share/plm/Main.qml"
+    test -f "$pkgdir/usr/lib/systemd/system/plmd.service"
+    test -f "$pkgdir/etc/pam.d/plm"
+    test -f "$pkgdir/etc/pam.d/plm-greeter"
+    # Never enable this service or disable SDDM as part of package staging.
+}
