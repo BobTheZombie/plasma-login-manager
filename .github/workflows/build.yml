@@ -1,0 +1,23 @@
+name: Build and structural validation
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build pkg-config             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools             libpam0g-dev libsystemd-dev
+      - name: Source invariants
+        run: python3 tests/test-source-layout.py
+      - name: Configure Meson
+        run: meson setup build --prefix=/usr --libdir=lib
+      - name: Compile
+        run: meson compile -C build

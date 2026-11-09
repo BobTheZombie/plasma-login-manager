@@ -1,0 +1,5 @@
+# Dedicated non-interactive greeter session.
+# Service is callable only by privileged plm-session helper.
+auth       required     pam_permit.so
+account    required     pam_permit.so
+session    required     pam_systemd.so class=greeter

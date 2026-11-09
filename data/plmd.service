@@ -1,0 +1,21 @@
+[Unit]
+Description=Plasma Login Manager (LPM developer preview)
+After=systemd-logind.service systemd-user-sessions.service
+Wants=systemd-logind.service
+Conflicts=sddm.service getty@tty1.service getty@tty2.service
+
+[Service]
+Type=notify
+ExecStart=/usr/libexec/plmd
+User=root
+Group=root
+RuntimeDirectory=plm
+RuntimeDirectoryMode=0750
+Restart=on-failure
+# The worker launches real user sessions: service sandbox flags propagate to
+# those sessions and must not disable sudo, networking or the user's home.
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target
+# Intentionally no Alias=display-manager.service until tested.
