@@ -106,6 +106,13 @@ static inline __m256 peak8(__m256 y, __m256 center, float scale)
 }
 
 __attribute__((target("avx2")))
+static inline __m256 addWeighted(__m256 base, __m256 part, float weight)
+{
+    return _mm256_add_ps(base,
+                        _mm256_mul_ps(part, _mm256_set1_ps(weight)));
+}
+
+__attribute__((target("avx2")))
 static void renderAvx2(QImage &image, const Columns &c)
 {
     const int w = image.width();
@@ -131,24 +138,21 @@ static void renderAvx2(QImage &image, const Columns &c)
                 _mm256_sub_ps(_mm256_loadu_ps(c.sun.data() + x),
                               _mm256_set1_ps(vd * vd)));
             const __m256 ambient = _mm256_mul_ps(sun, sun);
-            auto add = [](__m256 base, __m256 component, float weight) {
-                return _mm256_add_ps(base, _mm256_mul_ps(component, _mm256_set1_ps(weight)));
-            };
             __m256 r = _mm256_set1_ps(5.f + 13.f * v);
-            r = add(r, cp, 20.f); r = add(r, ce, 18.f);
-            r = add(r, bp, 21.f); r = add(r, be, 21.f);
-            r = add(r, pp, 92.f); r = add(r, pe, 60.f);
-            r = add(r, ambient, 24.f);
+            r = addWeighted(r, cp, 20.f); r = addWeighted(r, ce, 18.f);
+            r = addWeighted(r, bp, 21.f); r = addWeighted(r, be, 21.f);
+            r = addWeighted(r, pp, 92.f); r = addWeighted(r, pe, 60.f);
+            r = addWeighted(r, ambient, 24.f);
             __m256 g = _mm256_set1_ps(12.f + 14.f * v);
-            g = add(g, cp, 78.f); g = add(g, ce, 96.f);
-            g = add(g, bp, 47.f); g = add(g, be, 57.f);
-            g = add(g, pp, 33.f); g = add(g, pe, 18.f);
-            g = add(g, ambient, 27.f);
+            g = addWeighted(g, cp, 78.f); g = addWeighted(g, ce, 96.f);
+            g = addWeighted(g, bp, 47.f); g = addWeighted(g, be, 57.f);
+            g = addWeighted(g, pp, 33.f); g = addWeighted(g, pe, 18.f);
+            g = addWeighted(g, ambient, 27.f);
             __m256 b = _mm256_set1_ps(35.f + 26.f * v);
-            b = add(b, cp, 144.f); b = add(b, ce, 98.f);
-            b = add(b, bp, 146.f); b = add(b, be, 104.f);
-            b = add(b, pp, 142.f); b = add(b, pe, 65.f);
-            b = add(b, ambient, 71.f);
+            b = addWeighted(b, cp, 144.f); b = addWeighted(b, ce, 98.f);
+            b = addWeighted(b, bp, 146.f); b = addWeighted(b, be, 104.f);
+            b = addWeighted(b, pp, 142.f); b = addWeighted(b, pe, 65.f);
+            b = addWeighted(b, ambient, 71.f);
             const __m256i r8 = _mm256_cvtps_epi32(_mm256_min_ps(upper, r));
             const __m256i g8 = _mm256_cvtps_epi32(_mm256_min_ps(upper, g));
             const __m256i b8 = _mm256_cvtps_epi32(_mm256_min_ps(upper, b));
