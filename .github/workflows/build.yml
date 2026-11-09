@@ -66,14 +66,20 @@ jobs:
           done
           [ -S "$XDG_RUNTIME_DIR/plm-ci" ] || { cat /tmp/plm-weston.log; exit 1; }
           rc=0
+          # Exercise the production embedded qrc:/plm/Main.qml path,
+          # not the PLM_QML_PATH development override.
           QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software \
-          WAYLAND_DISPLAY=plm-ci PLM_QML_PATH="$PWD/qml/Main.qml" \
-          timeout --signal=TERM 5s ./build/plm-greeter >/tmp/plm-greeter.log 2>&1 || rc=$?
+          WAYLAND_DISPLAY=plm-ci \
+          timeout --signal=TERM 6s ./build/plm-greeter >/tmp/plm-greeter.log 2>&1 || rc=$?
           cat /tmp/plm-greeter.log
+          # Require a composited frame rather than just a living event loop.
+          grep -q 'PLM_FIRST_FRAME_MS=' /tmp/plm-greeter.log || {
+            echo "Greeter never submitted a first frame"; exit 1;
+          }
           if [ "$rc" -ne 124 ]; then
             echo "Greeter terminated early: collecting C++ backtrace"
             QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software \
-            WAYLAND_DISPLAY=plm-ci PLM_QML_PATH="$PWD/qml/Main.qml" \
+            WAYLAND_DISPLAY=plm-ci \
             timeout --signal=INT 15s gdb --batch -ex "set pagination off" \
               -ex "run" -ex "thread apply all bt 12" --args ./build/plm-greeter || true
           fi
