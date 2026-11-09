@@ -163,7 +163,7 @@ public:
         });
 
         recoverExistingSession();
-        startGreeter();
+        if (!m_userActive) startGreeter();
         m_recoveryMonitor.setInterval(2000);
         connect(&m_recoveryMonitor, &QTimer::timeout, this, [this] {
             if (m_recoveredSession.isEmpty() || m_userProcess) return;
@@ -206,15 +206,17 @@ private:
         const int count = sd_get_sessions(&ids);
         if (count < 0) return;
         for (int i = 0; i < count; ++i) {
-            char *seat = nullptr, *type = nullptr, *desktop = nullptr;
+            char *seat = nullptr, *type = nullptr, *klass = nullptr;
             unsigned int vt = 0;
             const int seatOk = sd_session_get_seat(ids[i], &seat);
             const int typeOk = sd_session_get_type(ids[i], &type);
-            const int desktopOk = sd_session_get_desktop(ids[i], &desktop);
+            const int classOk = sd_session_get_class(ids[i], &klass);
             const int vtOk = sd_session_get_vt(ids[i], &vt);
+            // Be conservative: never start a new desktop on an occupied VT2,
+            // even if the existing Wayland session omits KDE's desktop label.
             const bool match = seatOk >= 0 && seat && QByteArray(seat) == "seat0"
                 && typeOk >= 0 && type && QByteArray(type) == "wayland"
-                && desktopOk >= 0 && desktop && QByteArray(desktop) == "KDE"
+                && classOk >= 0 && klass && QByteArray(klass) == "user"
                 && vtOk >= 0 && vt == 2;
             if (match) {
                 m_recoveredSession = QString::fromUtf8(ids[i]);
@@ -222,7 +224,7 @@ private:
                 qWarning() << "Found existing Plasma logind session:"
                            << m_recoveredSession;
             }
-            free(seat); free(type); free(desktop); free(ids[i]);
+            free(seat); free(type); free(klass); free(ids[i]);
         }
         free(ids);
     }
