@@ -25,6 +25,9 @@ Backend::Backend(QObject *parent) : QObject(parent)
     connect(&m_socket, &QLocalSocket::readyRead, this, &Backend::onData);
     connect(&m_socket, &QLocalSocket::disconnected, this, [this] {
         setBusy(false);
+        m_awaitingResponse = false;
+        m_challenge.clear();
+        emit challengeChanged();
         setMessage("Login service disconnected");
         emit connectedChanged();
         QTimer::singleShot(1500, this, [this] { connectSocket(); });
@@ -89,6 +92,27 @@ void Backend::login(QString user, QString password)
     setMessage("Authenticating…");
     setBusy(true);
 }
+void Backend::answer(QString response)
+{
+    if (!isConnected() || !m_awaitingResponse || m_busy) {
+        response.fill(QChar(0));
+        return;
+    }
+    QByteArray packet = QJsonDocument(QJsonObject{
+        {"type","answer"}, {"value",response}
+    }).toJson(QJsonDocument::Compact);
+    packet.append('\n');
+    m_socket.write(packet);
+    m_socket.flush();
+    if (!packet.isEmpty()) explicit_bzero(packet.data(), packet.size());
+    response.fill(QChar(0));
+    m_awaitingResponse = false;
+    m_challenge.clear();
+    emit challengeChanged();
+    setBusy(true);
+    setMessage("Checking credentials…");
+}
+
 void Backend::power(const QString &action)
 {
     if (!isConnected() || (action != "reboot" && action != "poweroff")) return;
@@ -124,6 +148,15 @@ void Backend::onData()
                 emit usersChanged();
             }
             setMessage(QString());
+        } else if (type == "challenge") {
+            m_challenge = object.value("message").toString().left(512);
+            m_challengeEcho = object.value("echo").toBool();
+            m_awaitingResponse = true;
+            emit challengeChanged();
+            setBusy(false);
+            setMessage(m_challenge);
+        } else if (type == "notice") {
+            setMessage(object.value("message").toString().left(512));
         } else if (type == "busy") {
             setBusy(true);
             setMessage(object.value("message").toString());
@@ -131,9 +164,15 @@ void Backend::onData()
             setBusy(true);
             setMessage("Welcome to Plasma");
         } else if (type == "session-ended") {
+            m_awaitingResponse = false;
+            m_challenge.clear();
+            emit challengeChanged();
             setBusy(false);
             setMessage(QString());
         } else if (type == "error") {
+            m_awaitingResponse = false;
+            m_challenge.clear();
+            emit challengeChanged();
             setBusy(false);
             setMessage(object.value("message").toString());
         }

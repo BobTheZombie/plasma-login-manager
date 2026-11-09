@@ -78,7 +78,7 @@ Window {
         anchors.centerIn: parent
         anchors.verticalCenterOffset: Math.max(24, root.height * 0.07)
         width: Math.min(root.width - 32, 414)
-        height: 382
+        height: 420
         radius: 22
         color: "#d9192940"
         border.color: "#436187"
@@ -106,6 +106,7 @@ Window {
 
             ComboBox {
                 id: userPicker
+                enabled: !backend.busy && !backend.awaitingResponse
                 Layout.fillWidth: true
                 visible: backend.users.length > 0
                 model: backend.users
@@ -133,7 +134,7 @@ Window {
                 font.pixelSize: 16
                 color: "white"
                 selectByMouse: false
-                enabled: !backend.busy
+                enabled: !backend.busy && !backend.awaitingResponse
                 Keys.onReturnPressed: password.forceActiveFocus()
                 background: Rectangle {
                     radius: 11
@@ -145,10 +146,10 @@ Window {
                 id: password
                 Layout.fillWidth: true
                 height: 48
-                placeholderText: "Password"
+                placeholderText: backend.awaitingResponse ? "Enter response" : "Password"
                 font.pixelSize: 16
                 color: "white"
-                echoMode: TextInput.Password
+                echoMode: backend.awaitingResponse && backend.challengeEcho ? TextInput.Normal : TextInput.Password
                 enabled: !backend.busy
                 Keys.onReturnPressed: loginButton.clicked()
                 background: Rectangle {
@@ -162,11 +163,14 @@ Window {
                 Layout.fillWidth: true
                 height: 48
                 enabled: !backend.busy && backend.connected
-                text: backend.busy ? "Please wait…" : "Sign in"
+                text: backend.busy ? "Please wait…" : (backend.awaitingResponse ? "Continue" : "Sign in")
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
                 onClicked: {
-                    backend.login(username.text.trim(), password.text)
+                    if (backend.awaitingResponse)
+                        backend.answer(password.text)
+                    else
+                        backend.login(username.text.trim(), password.text)
                     password.text = ""
                 }
                 background: Rectangle {
