@@ -263,6 +263,8 @@ private:
             } else if (kind == "answer") {
                 answer(s, obj.value("value").toString());
             } else if (kind == "ready") {
+                if (!m_greeterReady && m_greeterStartup.isValid())
+                    qInfo().noquote() << "PLM_GREETER_READY_MS=" << m_greeterStartup.elapsed();
                 m_greeterReady = true;
                 sendMessage(s, {{"type","ready"},{"seat","seat0"}});
             } else if (kind == "power") {
@@ -481,6 +483,7 @@ private:
             return;
         }
         m_greeterReady = false;
+        m_greeterStartup.start();
         m_greeterData.clear();
         auto *worker = new QProcess(this);
         m_greeterProcess = worker;
@@ -537,6 +540,7 @@ private:
     QString m_recoveredSession;
     QTimer m_recoveryMonitor;
     QTimer m_watchdog;
+    QElapsedTimer m_greeterStartup;
 };
 
 int main(int argc, char **argv)

@@ -54,7 +54,7 @@ Window {
         }
     }
     Component.onCompleted: {
-        backend.ready()
+        // C++ signals ready once the first frame is presented.
         if (backend.users.length > 0)
             selectUser(backend.users[0])
     }

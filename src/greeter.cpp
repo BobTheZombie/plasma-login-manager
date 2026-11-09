@@ -235,11 +235,12 @@ int main(int argc, char **argv)
         // renderer stalls from QML parsing and CPU wallpaper generation.
         auto frameSeen = std::make_shared<bool>(false);
         QObject::connect(window, &QQuickWindow::frameSwapped, window,
-                         [frameSeen, &startup, screen] {
+                         [frameSeen, &startup, screen, &backend, &app] {
             if (*frameSeen) return;
             *frameSeen = true;
             qInfo().noquote() << "PLM_FIRST_FRAME_MS=" << startup.elapsed()
                               << "SCREEN=" << screen->name();
+            if (screen == app.primaryScreen()) backend.ready();
         }, Qt::QueuedConnection);
         window->showFullScreen();
         windows.insert(screen, window);
