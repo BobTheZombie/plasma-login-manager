@@ -3,12 +3,12 @@
 # never pushed to LPMBUILDS until real login/session tests pass.
 NAME="plasma-login-manager"
 VERSION="0.1.0"
-RELEASE="3"
+RELEASE="4"
 ARCH="${ARCH:-x86_64}"
 SUMMARY="Experimental Wayland-only Plasma 6 login manager with PAM and logind"
 URL="https://github.com/BobTheZombie/plasma-login-manager"
 LICENSE=("GPL-2.0-or-later")
-SOURCE=("https://github.com/BobTheZombie/plasma-login-manager/archive/0c31d4cfd7f83e5fe81ee3f15e086a04dc00ef9e.tar.gz")
+SOURCE=("https://github.com/BobTheZombie/plasma-login-manager/archive/16aed9d3f5a785c3b4bd6d0e625cc400311d433d.tar.gz")
 # Commit pinned, but archive checksum must be verified before stable publishing.
 SHA256SUMS=("SKIP")
 PATCHES=()
