@@ -59,8 +59,8 @@ static QJsonArray localUsers()
         const QString name = QString::fromLocal8Bit(pw->pw_name);
         const QString gecos = QString::fromLocal8Bit(pw->pw_gecos ? pw->pw_gecos : "");
         const QString display = gecos.section(',', 0, 0).trimmed();
-        users.push_back({name, display.isEmpty() ? name : display});
-        if (users.size() >= 128) break;
+        users.push_back({name.left(32), (display.isEmpty() ? name : display).left(64)});
+        if (users.size() >= 64) break;
     }
     endpwent();
     std::sort(users.begin(), users.end(), [](const auto &a, const auto &b) {

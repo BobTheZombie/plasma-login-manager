@@ -21,3 +21,11 @@ jobs:
         run: meson setup build --prefix=/usr --libdir=lib
       - name: Compile
         run: meson compile -C build
+      - name: Reject non-root authentication and daemon entrypoints
+        run: |
+          ! ./build/plmd
+          ! ./build/plm-session --mode user --user nobody --vt 2
+      - name: Verify systemd service syntax
+        run: |
+          systemd-analyze verify data/plmd.service 2>&1 | tee /tmp/plmd-unit-check.txt
+          ! grep -E 'Unknown key|Missing.*ExecStart|Failed to parse' /tmp/plmd-unit-check.txt

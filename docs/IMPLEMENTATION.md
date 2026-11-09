@@ -36,7 +36,8 @@ This v0.1 preview is not yet production-grade security software.
 The JSON password travels over a private local socket and is briefly
 copied by Qt and QML, with best-effort clearing of selected buffers.
 Those copies need an audited, binary challenge-response mechanism before
-production. PAM currently supports single password challenge only.
+production. PAM now supports multiple challenge-response prompts and expired-password
+changes, but the security properties of each real PAM module need testing.
 Seat0 and fixed VTs are not enough for real multi-seat hardware.
 Other gaps: credential rotation; retry/lockout persistence; session
 ownership after supervisor crash; screen-reader integration; keyboard

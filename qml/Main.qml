@@ -15,6 +15,13 @@ Window {
     property bool primary: primaryScreen
     property date now: new Date()
     Component.onCompleted: backend.ready()
+    Connections {
+        target: backend
+        function onUsersChanged() {
+            if (username.text === "" && backend.users.length > 0)
+                username.text = backend.users[0].name
+        }
+    }
 
     Timer {
         interval: 1000

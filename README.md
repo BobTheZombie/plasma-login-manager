@@ -17,7 +17,7 @@ This is an independent LPM-specific implementation, not KDE's official Plasma Lo
 **DO NOT REPLACE SDDM ON BARE METAL WITH THIS CODE YET.** Only seat0, VT1
 greeter and VT2 user sessions are implemented. This has not undergone real
 boot testing, secure authentication audit, fast-user-switch testing,
-hotplug testing, MFA/PAM conversation support, watchdog recovery,
+hotplug testing, live MFA/PAM integration testing, watchdog recovery,
 display teardown checks or crash recovery.
 
 Use a VM with a known-good console fallback. Installation does not enable the
@@ -57,8 +57,9 @@ a PAM helper via anonymous stdin pipe, never passed through D-Bus, argv,
 environment variables or a shell. Authentication requests are bounded,
 per seat and minimally rate-limited.
 
-MFA, password changes and multi-message PAM challenges are not supported
-yet. Input-method support, HDR, accessibility, dynamic multi-seat setup,
+A bounded interactive PAM challenge protocol is now implemented, including
+OTP and password-change prompts, but it has not been integration-tested with
+real PAM modules. Input-method support, HDR, accessibility, multi-seat setup,
 remote access, comprehensive display configuration and systemd crash
 handover are future work. Do not treat this as production ready.
 

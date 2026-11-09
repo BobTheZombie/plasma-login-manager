@@ -31,6 +31,9 @@ class SourceChecks(unittest.TestCase):
             with self.subTest(term=term):
                 self.assertIn(term, worker)
         self.assertIn("pam_systemd.so", self.file("data/pam/plm-greeter"))
+        self.assertIn("PAM_CHANGE_EXPIRED_AUTHTOK", worker)
+        self.assertIn("PROMPT", worker)
+        self.assertIn("receivePamReply", worker)
 
     def test_no_unsafe_global_sandbox_for_user_children(self):
         service = self.file("data/plmd.service")
@@ -45,6 +48,8 @@ class SourceChecks(unittest.TestCase):
         self.assertIn("qt6.preprocess(moc_headers:", self.file("meson.build"))
         self.assertIn("screenAdded", self.file("src/greeter.cpp"))
         self.assertIn("screenRemoved", self.file("src/greeter.cpp"))
+        self.assertIn("Q_PROPERTY(bool awaitingResponse", self.file("src/backend.h"))
+        self.assertIn("QJsonArray m_users", self.file("src/daemon.cpp"))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

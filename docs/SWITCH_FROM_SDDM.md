@@ -77,6 +77,6 @@ line.
 ## Still required for production readiness
 
 The implementation only manages seat0 with VT1 greeter and VT2 Plasma.
-Real multi-seat support, smartcard/fingerprint/OTP PAM conversations,
+Real multi-seat support, live smartcard/fingerprint/OTP PAM integration,
 fail-safe boot recovery, screenreader/virtual keyboard support and a broad
 device regression matrix remain unfinished. **Do not remove SDDM yet.**
