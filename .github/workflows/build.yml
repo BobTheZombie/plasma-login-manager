@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y meson ninja-build pkg-config gdb             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools             libpam0g-dev libsystemd-dev \
-            weston qt6-wayland qml6-module-qtqml \
+            weston xvfb qt6-wayland qml6-module-qtqml \
             qml6-module-qtqml-workerscript qml6-module-qtqml-models \
             qml6-module-qtquick \
             qml6-module-qtquick-controls qml6-module-qtquick-templates \
@@ -40,10 +40,22 @@ jobs:
           set -euo pipefail
           export XDG_RUNTIME_DIR="$(mktemp -d)"
           chmod 700 "$XDG_RUNTIME_DIR"
-          weston --backend=headless-backend.so --socket=plm-ci \
+          # Weston headless exposes no wl_seat. Ubuntu QtWayland 6.4
+          # dereferences its absent input device while creating TextField.
+          # Xvfb gives nested Weston a synthetic keyboard/mouse seat; the
+          # greeter still runs strictly as a Wayland client.
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/tmp/plm-xvfb.log 2>&1 &
+          xvfb_pid=$!
+          trap 'kill "${weston_pid:-}" "$xvfb_pid" 2>/dev/null || true; rm -rf "$XDG_RUNTIME_DIR"' EXIT
+          for i in $(seq 1 50); do
+            [ -S /tmp/.X11-unix/X99 ] && break
+            sleep 0.1
+          done
+          [ -S /tmp/.X11-unix/X99 ] || { cat /tmp/plm-xvfb.log; exit 1; }
+          weston --backend=x11-backend.so --socket=plm-ci \
             --idle-time=0 --log=/tmp/plm-weston.log &
           weston_pid=$!
-          trap 'kill "$weston_pid" 2>/dev/null || true; rm -rf "$XDG_RUNTIME_DIR"' EXIT
           for i in $(seq 1 50); do
             [ -S "$XDG_RUNTIME_DIR/plm-ci" ] && break
             sleep 0.1
