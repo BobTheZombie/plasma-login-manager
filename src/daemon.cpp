@@ -6,6 +6,8 @@
 #include <QElapsedTimer>
 #include <QPointer>
 #include <QJsonArray>
+#include <QVariantList>
+#include <vector>
 #include <QCoreApplication>
 #include <algorithm>
 #include <QDBusConnection>
@@ -44,6 +46,33 @@ static void sendMessage(QLocalSocket *socket, const QJsonObject &obj)
     socket->flush();
 }
 
+static QJsonArray localUsers()
+{
+    struct Person { QString name; QString display; };
+    std::vector<Person> users;
+    setpwent();
+    while (const passwd *pw = getpwent()) {
+        if (!pw->pw_name || !pw->pw_shell || pw->pw_uid < 1000 ||
+            QString::fromLocal8Bit(pw->pw_name) == "plm") continue;
+        const QString shell = QString::fromLocal8Bit(pw->pw_shell);
+        if (shell.endsWith("/nologin") || shell.endsWith("/false")) continue;
+        const QString name = QString::fromLocal8Bit(pw->pw_name);
+        const QString gecos = QString::fromLocal8Bit(pw->pw_gecos ? pw->pw_gecos : "");
+        const QString display = gecos.section(',', 0, 0).trimmed();
+        users.push_back({name, display.isEmpty() ? name : display});
+        if (users.size() >= 128) break;
+    }
+    endpwent();
+    std::sort(users.begin(), users.end(), [](const auto &a, const auto &b) {
+        return a.name < b.name;
+    });
+    QJsonArray array;
+    for (const auto &user : users) {
+        array.append(QJsonObject{{"name",user.name},{"displayName",user.display}});
+    }
+    return array;
+}
+
 static bool activateSession(const QString &id)
 {
     if (id.isEmpty()) return false;
@@ -72,6 +101,7 @@ public:
         }
         m_greeterUid = pw->pw_uid;
         m_greeterGid = pw->pw_gid;
+        m_users = localUsers();
 
         char **seats = nullptr;
         int seatCount = sd_get_seats(&seats);
@@ -127,7 +157,8 @@ public:
                 });
                 sendMessage(s, {{"type","hello"},
                                 {"seat","seat0"},
-                                {"session","Plasma (Wayland)"}});
+                                {"session","Plasma (Wayland)"},
+                                {"users",m_users}});
             }
         });
 
@@ -366,6 +397,7 @@ private:
         worker->start();
     }
 
+    QJsonArray m_users;
     uid_t m_greeterUid{};
     gid_t m_greeterGid{};
     QLocalServer m_server;
