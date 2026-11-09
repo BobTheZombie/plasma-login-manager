@@ -47,7 +47,7 @@ jobs:
           # Xvfb gives nested Weston a synthetic keyboard/mouse seat; the
           # greeter still runs strictly as a Wayland client.
           export DISPLAY=:99
-          Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/tmp/plm-xvfb.log 2>&1 &
+          Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp >/tmp/plm-xvfb.log 2>&1 &
           xvfb_pid=$!
           trap 'kill "${weston_pid:-}" "$xvfb_pid" 2>/dev/null || true; rm -rf "$XDG_RUNTIME_DIR"' EXIT
           for i in $(seq 1 50); do
@@ -57,7 +57,7 @@ jobs:
           [ -S /tmp/.X11-unix/X99 ] || { cat /tmp/plm-xvfb.log; exit 1; }
           # Pixman avoids slow/unsupported CI virtual-GL initialization.
           # The greeter itself still uses the Wayland Qt platform plugin.
-          weston --backend=x11-backend.so --renderer=pixman --socket=plm-ci \
+          weston --backend=x11-backend.so --renderer=pixman --width=1600 --height=900 --socket=plm-ci \
             --idle-time=0 --log=/tmp/plm-weston.log &
           weston_pid=$!
           for i in $(seq 1 200); do
