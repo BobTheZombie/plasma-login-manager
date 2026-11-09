@@ -189,7 +189,12 @@ int main(int argc, char **argv)
     Backend backend;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("backend", &backend);
-    QQmlComponent component(&engine, QUrl::fromLocalFile("/usr/share/plm/Main.qml"));
+    // Override only for unprivileged nested-compositor smoke tests.
+    // The privileged PAM worker constructs a clean environment, so normal
+    // system startup always loads the installed /usr/share/plm/Main.qml.
+    const QString qmlPath = qEnvironmentVariable(
+        "PLM_QML_PATH", "/usr/share/plm/Main.qml");
+    QQmlComponent component(&engine, QUrl::fromLocalFile(qmlPath));
     if (component.isError()) {
         qCritical() << component.errors();
         return 2;
