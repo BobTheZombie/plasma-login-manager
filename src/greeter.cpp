@@ -66,11 +66,17 @@ void Backend::connectSocket()
     if (m_socket.state() != QLocalSocket::UnconnectedState) return;
     m_socket.connectToServer(Endpoint, QIODevice::ReadWrite);
 }
-void Backend::ready()
+void Backend::ready(qint64 firstFrameMs)
 {
     m_uiReady = true;
+    if (firstFrameMs >= 0 && firstFrameMs <= 120000)
+        m_firstFrameMs = firstFrameMs;
     if (!isConnected()) return;
-    m_socket.write("{\"type\":\"ready\"}\n");
+    QByteArray packet = QJsonDocument(QJsonObject{
+        {"type", "ready"}, {"firstFrameMs", static_cast<int>(m_firstFrameMs)}
+    }).toJson(QJsonDocument::Compact);
+    packet.append('\n');
+    m_socket.write(packet);
     m_socket.flush();
 }
 
@@ -240,7 +246,7 @@ int main(int argc, char **argv)
             *frameSeen = true;
             qInfo().noquote() << "PLM_FIRST_FRAME_MS=" << startup.elapsed()
                               << "SCREEN=" << screen->name();
-            if (screen == app.primaryScreen()) backend.ready();
+            if (screen == app.primaryScreen()) backend.ready(startup.elapsed());
         }, Qt::QueuedConnection);
         window->showFullScreen();
         windows.insert(screen, window);

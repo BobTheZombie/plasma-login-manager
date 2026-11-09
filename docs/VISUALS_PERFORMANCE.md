@@ -56,8 +56,11 @@ Startup timing markers (milliseconds since each process started):
 
 The last metric includes PAM/logind and KWin startup as observed by plmd;
 the first-frame metric measures QML creation plus graphics initialization
-inside plm-greeter. These values distinguish a slow KWin/DRM handoff from
-a slow Qt/QML or GPU startup. On LPM collect:
+inside plm-greeter. The greeter sends the first-frame timing through its
+private socket so **both PLM_FIRST_FRAME_MS and PLM_GREETER_READY_MS appear
+in plmd's systemd journal**. Earlier greeter-only APP/QML timings go to
+its controlling TTY unless separately captured. These values distinguish
+slow KWin/DRM handoff from slow Qt/QML or GPU startup. On LPM collect:
 
     journalctl -b -u plmd.service -o short-monotonic | grep PLM_
 

@@ -263,8 +263,12 @@ private:
             } else if (kind == "answer") {
                 answer(s, obj.value("value").toString());
             } else if (kind == "ready") {
-                if (!m_greeterReady && m_greeterStartup.isValid())
+                if (!m_greeterReady && m_greeterStartup.isValid()) {
+                    const int clientMs = obj.value("firstFrameMs").toInt(-1);
+                    if (clientMs >= 0 && clientMs <= 120000)
+                        qInfo().noquote() << "PLM_FIRST_FRAME_MS=" << clientMs;
                     qInfo().noquote() << "PLM_GREETER_READY_MS=" << m_greeterStartup.elapsed();
+                }
                 m_greeterReady = true;
                 sendMessage(s, {{"type","ready"},{"seat","seat0"}});
             } else if (kind == "power") {

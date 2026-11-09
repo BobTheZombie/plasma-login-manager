@@ -25,7 +25,7 @@ public:
     bool challengeEcho() const { return m_challengeEcho; }
     bool busy() const { return m_busy; }
     bool isConnected() const;
-    Q_INVOKABLE void ready();
+    Q_INVOKABLE void ready(qint64 firstFrameMs = -1);
     Q_INVOKABLE void login(QString user, QString password);
     Q_INVOKABLE void answer(QString response);
     Q_INVOKABLE void power(const QString &action);
@@ -47,6 +47,7 @@ private:
     QString m_message;
     bool m_busy = false;
     bool m_uiReady = false;
+    qint64 m_firstFrameMs = -1;
     QVariantList m_users;
     QString m_challenge;
     bool m_challengeEcho = false;
