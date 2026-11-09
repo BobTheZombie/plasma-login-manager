@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "backend.h"
+#include "wallpaper.h"
 #include <QGuiApplication>
 #include <QScreen>
 #include <QQuickWindow>
@@ -115,7 +116,8 @@ void Backend::answer(QString response)
 
 void Backend::power(const QString &action)
 {
-    if (!isConnected() || (action != "reboot" && action != "poweroff")) return;
+    if (!isConnected() ||
+        (action != "reboot" && action != "poweroff" && action != "suspend")) return;
     QByteArray msg = QJsonDocument(QJsonObject{
         {"type","power"}, {"action",action}
     }).toJson(QJsonDocument::Compact);
@@ -188,6 +190,7 @@ int main(int argc, char **argv)
 
     Backend backend;
     QQmlApplicationEngine engine;
+    engine.addImageProvider("plmwallpaper", new WallpaperProvider());
     engine.rootContext()->setContextProperty("backend", &backend);
     // Override only for unprivileged nested-compositor smoke tests.
     // The privileged PAM worker constructs a clean environment, so normal

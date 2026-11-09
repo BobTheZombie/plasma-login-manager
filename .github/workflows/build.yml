@@ -26,6 +26,8 @@ jobs:
         run: meson setup build --prefix=/usr --libdir=lib
       - name: Compile
         run: meson compile -C build
+      - name: Wallpaper SIMD/scalar equivalence
+        run: meson test -C build --print-errorlogs
       - name: Reject non-root authentication and daemon entrypoints
         run: |
           ! ./build/plmd

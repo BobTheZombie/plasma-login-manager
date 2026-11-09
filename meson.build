@@ -21,9 +21,29 @@ executable('plm-session', 'src/session.cpp',
   dependencies: [pam, systemd],
   install: true, install_dir: get_option('libexecdir'))
 greeter_moc = qt6.preprocess(moc_headers: ['src/backend.h'])
-executable('plm-greeter', ['src/greeter.cpp', greeter_moc],
+# Tune only UI/wallpaper rendering. PAM/session binaries remain portable.
+visual_cpp_args = []
+if get_option('simd')
+  visual_cpp_args += ['-DPLM_ENABLE_SIMD=1']
+else
+  visual_cpp_args += ['-DPLM_ENABLE_SIMD=0']
+endif
+if get_option('cpu_tune') != 'generic'
+  cpu_flag = '-march=' + get_option('cpu_tune')
+  if not cc.has_argument(cpu_flag)
+    error('Compiler does not support ' + cpu_flag)
+  endif
+  visual_cpp_args += [cpu_flag]
+endif
+
+executable('plm-greeter', ['src/greeter.cpp', 'src/wallpaper.cpp', greeter_moc],
+  cpp_args: visual_cpp_args,
   dependencies: [qtquick],
   install: true, install_dir: get_option('libexecdir'))
+wallpaper_test = executable('plm-wallpaper-test',
+  ['tests/test-wallpaper.cpp', 'src/wallpaper.cpp'],
+  cpp_args: visual_cpp_args, dependencies: [qtquick])
+test('wallpaper-scalar-simd-parity', wallpaper_test)
 
 install_data('qml/Main.qml', install_dir: get_option('datadir') / 'plm')
 install_data('data/plmd.service', install_dir: get_option('prefix') / 'lib/systemd/system')

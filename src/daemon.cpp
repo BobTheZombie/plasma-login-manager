@@ -398,7 +398,7 @@ private:
 
     void power(QLocalSocket *s, const QString &action)
     {
-        if (action != "reboot" && action != "poweroff") {
+        if (action != "reboot" && action != "poweroff" && action != "suspend") {
             sendMessage(s, {{"type","error"},{"message","Unsupported power action"}});
             return;
         }
@@ -410,7 +410,8 @@ private:
             sendMessage(s, {{"type","error"},{"message","logind unavailable"}});
             return;
         }
-        manager.asyncCall(action == "reboot" ? "Reboot" : "PowerOff", true);
+        manager.asyncCall(action == "reboot" ? "Reboot" :
+                          (action == "suspend" ? "Suspend" : "PowerOff"), true);
     }
 
     void readWorker(QProcess *worker, bool greeter)
