@@ -14,7 +14,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools             libpam0g-dev libsystemd-dev \
+          sudo apt-get install -y meson ninja-build pkg-config gdb             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools             libpam0g-dev libsystemd-dev \
             weston qt6-wayland qml6-module-qtqml \
             qml6-module-qtqml-workerscript qml6-module-qtqml-models \
             qml6-module-qtquick \
@@ -54,6 +54,13 @@ jobs:
           WAYLAND_DISPLAY=plm-ci PLM_QML_PATH="$PWD/qml/Main.qml" \
           timeout --signal=TERM 5s ./build/plm-greeter >/tmp/plm-greeter.log 2>&1 || rc=$?
           cat /tmp/plm-greeter.log
+          if [ "$rc" -ne 124 ]; then
+            echo "Greeter terminated early: collecting C++ backtrace"
+            QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software \
+            WAYLAND_DISPLAY=plm-ci PLM_QML_PATH="$PWD/qml/Main.qml" \
+            timeout --signal=INT 15s gdb --batch -ex "set pagination off" \
+              -ex "run" -ex "thread apply all bt 12" --args ./build/plm-greeter || true
+          fi
           # timeout=124 means the greeter stayed alive under a real
           # Wayland compositor without a PAM backend. Early exit is failure.
           [ "$rc" -eq 124 ]
