@@ -20,8 +20,9 @@ boot testing, secure authentication audit, fast-user-switch testing,
 hotplug testing, MFA/PAM conversation support, watchdog recovery,
 display teardown checks or crash recovery.
 
-Use a VM with a known-good console fallback. Installing does not enable
-the service or claim the display-manager.service systemd alias.
+Use a VM with a known-good console fallback. Installation does not enable the
+service. The display-manager.service alias exists only when an administrator
+explicitly enables plmd.service, after SDDM has been disabled.
 
 ## Build prerequisites
 

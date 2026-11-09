@@ -37,7 +37,9 @@ class SourceChecks(unittest.TestCase):
         for disallowed in ("NoNewPrivileges=yes", "PrivateTmp=yes",
                            "RestrictAddressFamilies=AF_UNIX", "ProtectSystem=strict"):
             self.assertNotIn(disallowed, service)
-        self.assertNotIn("Alias=display-manager.service\n", service)
+        self.assertIn("Alias=display-manager.service", service)
+        self.assertIn("WatchdogSec=30s", service)
+        self.assertIn("StartLimitBurst=4", service)
 
     def test_qt_moc_and_multiscreen(self):
         self.assertIn("qt6.preprocess(moc_headers:", self.file("meson.build"))
