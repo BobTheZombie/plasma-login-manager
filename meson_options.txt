@@ -1,0 +1,5 @@
+option('cpu_tune', type: 'combo', choices: ['generic', 'native', 'znver2'],
+  value: 'generic',
+  description: 'Optional host-specific tuning for visual renderer; portable default')
+option('simd', type: 'boolean', value: true,
+  description: 'Enable runtime-dispatched AVX2 wallpaper fast path on compatible CPUs')
