@@ -68,11 +68,48 @@ static bool readExact(int fd, void *where, size_t length)
 {
     auto *out = static_cast<unsigned char *>(where);
     while (length) {
+        if (interrupted) return false;
         const ssize_t n = read(fd, out, length);
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) return false;
         out += n;
         length -= static_cast<size_t>(n);
+    }
+    return true;
+}
+
+static void sendPamText(const char *type, int echo, const char *message)
+{
+    // Hex framing prevents embedded newline / control sequences escaping
+    // into the worker-to-supervisor line protocol.
+    std::string hex;
+    const size_t n = strnlen(message ? message : "", 512);
+    static constexpr char digits[] = "0123456789abcdef";
+    for (size_t i = 0; i < n; ++i) {
+        const unsigned char b = static_cast<unsigned char>(message[i]);
+        hex.push_back(digits[b >> 4]);
+        hex.push_back(digits[b & 15]);
+    }
+    fprintf(stdout, "%s=%d:%s\n", type, echo, hex.c_str());
+    fflush(stdout);
+}
+
+static bool receivePamReply(std::vector<char> &secret)
+{
+    uint32_t wireSize = 0;
+    if (!readExact(STDIN_FILENO, &wireSize, 4)) return false;
+    const uint32_t n = ntohl(wireSize);
+    if (n == 0 || n > 1024) return false;
+    secret.resize(n + 1, '\0');
+    if (!readExact(STDIN_FILENO, secret.data(), n)) {
+        explicit_bzero(secret.data(), secret.size());
+        secret.clear();
+        return false;
+    }
+    if (memchr(secret.data(), '\0', n)) {
+        explicit_bzero(secret.data(), secret.size());
+        secret.clear();
+        return false;
     }
     return true;
 }
@@ -87,14 +124,22 @@ static int conversation(int count, const pam_message **msgs,
     for (int i = 0; i < count; ++i) {
         if (!msgs[i]) goto invalid;
         const auto style = msgs[i]->msg_style;
-        if (style == PAM_PROMPT_ECHO_OFF) {
-            if (credentials->password.empty()) goto invalid;
-            answer[i].resp = strdup(credentials->password.data());
+        if (style == PAM_PROMPT_ECHO_OFF || style == PAM_PROMPT_ECHO_ON) {
+            std::vector<char> reply;
+            if (style == PAM_PROMPT_ECHO_OFF && !credentials->password.empty()) {
+                reply.swap(credentials->password);
+            } else {
+                sendPamText("PROMPT", style == PAM_PROMPT_ECHO_ON ? 1 : 0,
+                            msgs[i]->msg);
+                if (!receivePamReply(reply)) goto invalid;
+            }
+            answer[i].resp = strdup(reply.data());
+            explicit_bzero(reply.data(), reply.size());
+            reply.clear();
             if (!answer[i].resp) goto invalid;
         } else if (style == PAM_TEXT_INFO || style == PAM_ERROR_MSG) {
-            answer[i].resp = nullptr;
+            sendPamText("NOTICE", style == PAM_ERROR_MSG ? 1 : 0, msgs[i]->msg);
         } else {
-            // No echo-on/OTP/password-change prompt support in this preview.
             goto invalid;
         }
     }
@@ -217,6 +262,12 @@ int main(int argc, char **argv)
     if (mode == "user") {
         result = pam_authenticate(pam, 0);
         if (result == PAM_SUCCESS) result = pam_acct_mgmt(pam, 0);
+        if (result == PAM_NEW_AUTHTOK_REQD) {
+            // Expired credentials: PAM prompts for a password change using
+            // the same private challenge-response pipe.
+            result = pam_chauthtok(pam, PAM_CHANGE_EXPIRED_AUTHTOK);
+            if (result == PAM_SUCCESS) result = pam_acct_mgmt(pam, 0);
+        }
         if (result != PAM_SUCCESS) {
             fprintf(stderr, "PAM authentication/account check failed\n");
             return finish(result, false, false);
