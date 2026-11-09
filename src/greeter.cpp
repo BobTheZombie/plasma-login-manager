@@ -20,6 +20,7 @@ Backend::Backend(QObject *parent) : QObject(parent)
     connect(&m_socket, &QLocalSocket::connected, this, [this] {
         setMessage(QString());
         emit connectedChanged();
+        if (m_uiReady) ready();
     });
     connect(&m_socket, &QLocalSocket::readyRead, this, &Backend::onData);
     connect(&m_socket, &QLocalSocket::disconnected, this, [this] {
@@ -57,6 +58,14 @@ void Backend::connectSocket()
     if (m_socket.state() != QLocalSocket::UnconnectedState) return;
     m_socket.connectToServer(Endpoint, QIODevice::ReadWrite);
 }
+void Backend::ready()
+{
+    m_uiReady = true;
+    if (!isConnected()) return;
+    m_socket.write("{\"type\":\"ready\"}\n");
+    m_socket.flush();
+}
+
 void Backend::login(QString user, QString password)
 {
     if (!isConnected() || m_busy) {

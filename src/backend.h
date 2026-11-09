@@ -16,6 +16,7 @@ public:
     QString message() const { return m_message; }
     bool busy() const { return m_busy; }
     bool isConnected() const;
+    Q_INVOKABLE void ready();
     Q_INVOKABLE void login(QString user, QString password);
     Q_INVOKABLE void power(const QString &action);
 
@@ -33,4 +34,5 @@ private:
     QByteArray m_incoming;
     QString m_message;
     bool m_busy = false;
+    bool m_uiReady = false;
 };

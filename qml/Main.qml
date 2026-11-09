@@ -14,6 +14,7 @@ Window {
     flags: Qt.FramelessWindowHint
     property bool primary: primaryScreen
     property date now: new Date()
+    Component.onCompleted: backend.ready()
 
     Timer {
         interval: 1000
@@ -105,6 +106,7 @@ Window {
 
             TextField {
                 id: username
+                focus: true
                 Layout.fillWidth: true
                 height: 48
                 placeholderText: "Username"
@@ -184,7 +186,7 @@ Window {
         Button {
             text: "Restart"
             flat: true
-            onClicked: backend.power("reboot")
+            onClicked: { powerDialog.action = "reboot"; powerDialog.open() }
         }
         Rectangle { height: 20; width: 1; color: "#6b819e" }
         Text {
@@ -197,8 +199,17 @@ Window {
         Button {
             text: "Power off"
             flat: true
-            onClicked: backend.power("poweroff")
+            onClicked: { powerDialog.action = "poweroff"; powerDialog.open() }
         }
+    }
+    Dialog {
+        id: powerDialog
+        property string action: ""
+        title: action === "reboot" ? "Restart computer?" : "Power off computer?"
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: backend.power(action)
     }
     Text {
         visible: !root.primary
