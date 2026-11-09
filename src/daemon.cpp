@@ -214,6 +214,8 @@ private:
             const QString kind = obj.value("type").toString();
             if (kind == "auth") {
                 authenticate(s, obj);
+            } else if (kind == "answer") {
+                answer(s, obj.value("value").toString());
             } else if (kind == "ready") {
                 m_greeterReady = true;
                 sendMessage(s, {{"type","ready"},{"seat","seat0"}});
@@ -246,6 +248,8 @@ private:
         }
         m_lastAttempt = now;
         m_userData.clear();
+        m_authClient = socket;
+        m_waitingForAnswer = false;
         auto *worker = new QProcess(this);
         m_userProcess = worker;
         worker->setProgram(SessionWorker);
@@ -271,6 +275,8 @@ private:
             }
             m_userProcess = nullptr;
             m_userActive = false;
+            m_waitingForAnswer = false;
+            m_authClient.clear();
             if (!wasActive) {
                 emitAll({{"type","error"},{"message","Authentication failed"}});
             } else {
@@ -285,6 +291,7 @@ private:
         worker->start();
         if (!worker->waitForStarted(2000)) {
             m_userProcess = nullptr;
+            m_authClient.clear();
             sendMessage(socket, {{"type","error"},{"message","Session helper failed to start"}});
             worker->deleteLater();
             password.fill(QChar(0));
@@ -296,11 +303,48 @@ private:
         QByteArray data(reinterpret_cast<const char *>(&n), 4);
         data.append(secret);
         worker->write(data);
-        worker->closeWriteChannel();
+        // Keep stdin open for further PAM prompts, including MFA and
+        // password-change challenges. Close after SESSION is announced.
+        QTimer::singleShot(120000, worker, [this, worker] {
+            if (m_userProcess == worker && !m_userActive) {
+                qWarning() << "PAM conversation timed out";
+                worker->kill();
+            }
+        });
         if (!secret.isEmpty()) explicit_bzero(secret.data(), secret.size());
         if (!data.isEmpty()) explicit_bzero(data.data(), data.size());
         password.fill(QChar(0));
         sendMessage(socket, {{"type","busy"},{"message","Authenticating…"}});
+    }
+
+    void answer(QLocalSocket *socket, QString value)
+    {
+        if (m_authClient != socket || !m_waitingForAnswer ||
+            !m_userProcess || m_userActive) {
+            sendMessage(socket, {{"type","error"},{"message","No pending PAM challenge"}});
+            value.fill(QChar(0));
+            return;
+        }
+        QByteArray bytes = value.toUtf8();
+        if (bytes.isEmpty() || bytes.size() > 1024 || bytes.contains('\0')) {
+            sendMessage(socket, {{"type","error"},{"message","Invalid challenge response"}});
+            if (!bytes.isEmpty()) explicit_bzero(bytes.data(), bytes.size());
+            value.fill(QChar(0));
+            return;
+        }
+        const uint32_t wire = htonl(static_cast<uint32_t>(bytes.size()));
+        QByteArray frame(reinterpret_cast<const char *>(&wire), sizeof(wire));
+        frame.append(bytes);
+        const qint64 written = m_userProcess->write(frame);
+        if (written != frame.size()) {
+            sendMessage(socket, {{"type","error"},{"message","PAM helper unavailable"}});
+        } else {
+            m_waitingForAnswer = false;
+            sendMessage(socket, {{"type","busy"},{"message","Checking credentials…"}});
+        }
+        if (!frame.isEmpty()) explicit_bzero(frame.data(), frame.size());
+        if (!bytes.isEmpty()) explicit_bzero(bytes.data(), bytes.size());
+        value.fill(QChar(0));
     }
 
     void power(QLocalSocket *s, const QString &action)
@@ -330,6 +374,25 @@ private:
             if (pos < 0) break;
             const QByteArray line = buffer.left(pos);
             buffer.remove(0, pos + 1);
+            if (!greeter && (line.startsWith("PROMPT=") ||
+                             line.startsWith("NOTICE="))) {
+                const bool prompt = line.startsWith("PROMPT=");
+                const QByteArray packet = line.mid(7);
+                if (packet.size() < 2 || packet.at(1) != ':' ||
+                    packet.size() > 1200) continue;
+                const QByteArray encoded = packet.mid(2);
+                const QByteArray decoded = QByteArray::fromHex(encoded);
+                const QString message = QString::fromUtf8(decoded);
+                if (prompt && m_authClient && !m_userActive) {
+                    m_waitingForAnswer = true;
+                    sendMessage(m_authClient, {{"type","challenge"},
+                               {"message",message},
+                               {"echo",packet.at(0) == '1'}});
+                } else if (!prompt && m_authClient) {
+                    sendMessage(m_authClient, {{"type","notice"},{"message",message}});
+                }
+                continue;
+            }
             if (!line.startsWith("SESSION=")) continue;
             const QString id = QString::fromUtf8(line.mid(8));
             if (id.isEmpty()) continue;
@@ -340,6 +403,9 @@ private:
                     qWarning() << "Could not activate greeter VT";
             } else {
                 m_userActive = true;
+                m_waitingForAnswer = false;
+                if (m_userProcess) m_userProcess->closeWriteChannel();
+                m_authClient.clear();
                 m_failedAttempts = 0;
                 m_backoffUntil = 0;
                 emitAll({{"type","starting"},{"message","Starting Plasma…"}});
@@ -414,6 +480,8 @@ private:
     qint64 m_greeterCrashWindow = 0;
     int m_greeterCrashCount = 0;
     int m_failedAttempts = 0;
+    QPointer<QLocalSocket> m_authClient;
+    bool m_waitingForAnswer = false;
     bool m_greeterReady = false;
     QTimer m_watchdog;
 };
