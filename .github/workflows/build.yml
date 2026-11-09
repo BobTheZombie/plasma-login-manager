@@ -14,7 +14,10 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools             libpam0g-dev libsystemd-dev
+          sudo apt-get install -y meson ninja-build pkg-config             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools             libpam0g-dev libsystemd-dev \
+            weston qt6-wayland qml6-module-qtqml qml6-module-qtquick \
+            qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window
       - name: Source invariants
         run: python3 tests/test-source-layout.py
       - name: Configure Meson
@@ -29,3 +32,26 @@ jobs:
         run: |
           systemd-analyze verify data/plmd.service 2>&1 | tee /tmp/plmd-unit-check.txt
           ! grep -E 'Unknown key|Missing.*ExecStart|Failed to parse' /tmp/plmd-unit-check.txt
+      - name: Headless Wayland greeter startup test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless-backend.so --socket=plm-ci \
+            --idle-time=0 --log=/tmp/plm-weston.log &
+          weston_pid=$!
+          trap 'kill "$weston_pid" 2>/dev/null || true; rm -rf "$XDG_RUNTIME_DIR"' EXIT
+          for i in $(seq 1 50); do
+            [ -S "$XDG_RUNTIME_DIR/plm-ci" ] && break
+            sleep 0.1
+          done
+          [ -S "$XDG_RUNTIME_DIR/plm-ci" ] || { cat /tmp/plm-weston.log; exit 1; }
+          rc=0
+          QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software \
+          WAYLAND_DISPLAY=plm-ci PLM_QML_PATH="$PWD/qml/Main.qml" \
+          timeout --signal=TERM 5s ./build/plm-greeter >/tmp/plm-greeter.log 2>&1 || rc=$?
+          cat /tmp/plm-greeter.log
+          # timeout=124 means the greeter stayed alive under a real
+          # Wayland compositor without a PAM backend. Early exit is failure.
+          [ "$rc" -eq 124 ]
