@@ -246,10 +246,12 @@ private:
         while (true) {
             const qsizetype i = buffer.indexOf('\n');
             if (i < 0) break;
-            const QByteArray frame = buffer.left(i);
+            QByteArray frame = buffer.left(i);
+            if (i >= 0) explicit_bzero(buffer.data(), static_cast<size_t>(i + 1));
             buffer.remove(0, i + 1);
             QJsonParseError parse{};
             const QJsonDocument json = QJsonDocument::fromJson(frame, &parse);
+            if (!frame.isEmpty()) explicit_bzero(frame.data(), frame.size());
             if (parse.error != QJsonParseError::NoError || !json.isObject()) {
                 sendMessage(s, {{"type","error"},{"message","Invalid request"}});
                 continue;
@@ -286,7 +288,7 @@ private:
         }
         if (!m_greeterReady || m_userActive || m_userProcess ||
             now < m_backoffUntil || now - m_lastAttempt < 1750) {
-            sendMessage(socket, {{"type","busy"},{"message","Please try again shortly"}});
+            sendMessage(socket, {{"type","error"},{"message","Please try again shortly"}});
             password.fill(QChar(0));
             return;
         }
