@@ -14,6 +14,7 @@
 #include <QQmlEngine>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QFileInfo>
 #include <QHash>
 #include <QTimer>
