@@ -3,12 +3,12 @@
 # never pushed to LPMBUILDS until real login/session tests pass.
 NAME="plasma-login-manager"
 VERSION="0.1.0"
-RELEASE="4"
+RELEASE="5"
 ARCH="${ARCH:-x86_64}"
 SUMMARY="Experimental Wayland-only Plasma 6 login manager with PAM and logind"
 URL="https://github.com/BobTheZombie/plasma-login-manager"
 LICENSE=("GPL-2.0-or-later")
-SOURCE=("https://github.com/BobTheZombie/plasma-login-manager/archive/16aed9d3f5a785c3b4bd6d0e625cc400311d433d.tar.gz")
+SOURCE=("https://github.com/BobTheZombie/plasma-login-manager/archive/b651d7347ec0d59e630848682ebb9b0592744751.tar.gz")
 # Commit pinned, but archive checksum must be verified before stable publishing.
 SHA256SUMS=("SKIP")
 PATCHES=()
@@ -32,6 +32,10 @@ prepare() {
     test -f "$src/meson.build"
     test -f "$src/src/daemon.cpp"
     test -f "$src/src/session.cpp"
+    grep -q "^#include <QJsonArray>" "$src/src/greeter.cpp" || {
+        echo "[ERROR] greeter.cpp missing required QJsonArray include; source archive is stale" >&2
+        return 1
+    }
     rm -rf "$src/build"
 }
 build() {
